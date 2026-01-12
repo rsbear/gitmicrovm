@@ -1,5 +1,5 @@
 {
-  description = "Soft-Serve running inside a Firecracker MicroVM";
+  description = "Soft-Serve running inside a QEMU MicroVM";
   
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -44,7 +44,7 @@
             ];
             
             microvm = {
-              hypervisor = "firecracker";
+              hypervisor = "qemu";
               vcpu = 2;
               mem = 1024;
               interfaces = [{
@@ -52,11 +52,18 @@
                 id = "vm-net";
                 mac = "02:00:00:00:00:01";
               }];
+              # QEMU supports virtiofs shares
               shares = [{
                 source = "/nix/store";
                 mountPoint = "/nix/store";
                 tag = "store";
                 proto = "virtiofs";
+              }];
+              # Optional: persistent volume for git data
+              volumes = [{
+                image = "soft-serve-data.img";
+                mountPoint = "/var/lib/soft-serve";
+                size = 1024;
               }];
             };
             
@@ -67,19 +74,13 @@
       };
     in
     {
-      # Expose the NixOS configuration
       nixosConfigurations.soft-serve-vm = vmConfig;
       
-      # Expose packages properly
       packages.${system} = {
-        # The MicroVM runner script
         default = vmConfig.config.microvm.declaredRunner;
-        
-        # Alternatively, you can also expose the runner explicitly
         vm = vmConfig.config.microvm.declaredRunner;
       };
       
-      # Optional: expose apps for easier running
       apps.${system}.default = {
         type = "app";
         program = "${vmConfig.config.microvm.declaredRunner}/bin/microvm-run";
