@@ -12,80 +12,63 @@
       pkgs = import nixpkgs { inherit system; };
     in
     {
-      nixosConfigurations.soft-serve-vm =
-        nixpkgs.lib.nixosSystem {
-          inherit system;
+      nixosConfigurations.soft-serve-vm = nixpkgs.lib.nixosSystem {
+        inherit system;
+        modules = [
+          microvm.nixosModules.microvm
+          ({ config, pkgs, ... }: {
+            networking.hostName = "soft-serve";
+            documentation.enable = false;
 
-          modules = [
-            microvm.nixosModules.microvm
+            users.users.softserve = {
+              isNormalUser = true;
+              home = "/var/lib/soft-serve";
+            };
 
-            ({ config, pkgs, ... }: {
-              networking.hostName = "soft-serve";
+            environment.systemPackages = [ pkgs.soft-serve ];
 
-              # Minimal system
-              documentation.enable = false;
-
-              users.users.softserve = {
-                isNormalUser = true;
-                home = "/var/lib/soft-serve";
+            systemd.services.soft-serve = {
+              description = "Soft Serve Git Server";
+              wantedBy = [ "multi-user.target" ];
+              after = [ "network.target" ];
+              serviceConfig = {
+                ExecStart = "${pkgs.soft-serve}/bin/soft serve";
+                User = "softserve";
+                WorkingDirectory = "/var/lib/soft-serve";
+                Restart = "always";
               };
+            };
 
-              environment.systemPackages = [
-                pkgs.soft-serve
-              ];
+            systemd.tmpfiles.rules = [
+              "d /var/lib/soft-serve 0755 softserve softserve -"
+            ];
 
-              # Run soft-serve as a service
-              systemd.services.soft-serve = {
-                description = "Soft Serve Git Server";
-                wantedBy = [ "multi-user.target" ];
-                after = [ "network.target" ];
+            microvm = {
+              hypervisor = "firecracker";
+              vcpu = 2;
+              mem = 1024;
+              interfaces = [{
+                type = "tap";
+                id = "vm-net";
+                mac = "02:00:00:00:00:01";
+              }];
+              shares = [{
+                source = "/nix/store";
+                mountPoint = "/nix/store";
+                tag = "store";
+                proto = "virtiofs";
+              }];
+            };
 
-                serviceConfig = {
-                  ExecStart = "${pkgs.soft-serve}/bin/soft serve";
-                  User = "softserve";
-                  WorkingDirectory = "/var/lib/soft-serve";
-                  Restart = "always";
-                };
-              };
+            networking.useDHCP = true;
+            system.stateVersion = "24.05";
+          })
+        ];
+      };
 
-              # Required directory
-              systemd.tmpfiles.rules = [
-                "d /var/lib/soft-serve 0755 softserve softserve -"
-              ];
-
-              # MicroVM configuration
-              microvm = {
-                hypervisor = "firecracker";
-
-                vcpu = 2;
-                mem = 1024;
-
-                interfaces = [
-                  {
-                    type = "tap";
-                    id = "vm-net";
-                    mac = "02:00:00:00:00:01";
-                  }
-                ];
-
-                shares = [
-                  {
-                    source = "/nix/store";
-                    mountPoint = "/nix/store";
-                    tag = "store";
-                    proto = "virtiofs";
-                  }
-                ];
-              };
-
-              networking.useDHCP = true;
-              system.stateVersion = "24.05";
-            })
-          ];
-        };
-
-      # Convenience runner
-      packages.${system}.run =
-        self.nixosConfigurations.soft-serve-vm.config.microvm.runner;
+      # Define 'default' so 'nix run' knows what to execute
+      packages.${system} = {
+        default = self.nixosConfigurations.soft-serve-vm.config.microvm.runner;
+      };
     };
 }
