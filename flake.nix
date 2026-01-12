@@ -1,5 +1,5 @@
 {
-  description = "Firecracker-based Git Server for multi-tenant platform";
+  description = "QEMU-based Git Server for Hetzner CPX VPS";
   
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -11,7 +11,6 @@
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
       
-      # Build the NixOS configuration
       vmConfig = nixpkgs.lib.nixosSystem {
         inherit system;
         modules = [
@@ -19,14 +18,12 @@
           ({ config, pkgs, ... }: {
             networking.hostName = "git-server";
             
-            # Minimal system - no docs, no extra packages
             documentation.enable = false;
             environment.noXlibs = true;
             
             users.users.git = {
               isNormalUser = true;
               home = "/var/lib/git";
-              description = "Git user";
             };
             
             environment.systemPackages = [ pkgs.soft-serve ];
@@ -40,11 +37,6 @@
                 User = "git";
                 WorkingDirectory = "/var/lib/git";
                 Restart = "always";
-                # Bind to all interfaces
-                Environment = [
-                  "SOFT_SERVE_BIND_ADDRESS=:23231"
-                  "SOFT_SERVE_SSH_LISTEN_ADDR=:23232"
-                ];
               };
             };
             
@@ -53,44 +45,35 @@
             ];
             
             microvm = {
-              hypervisor = "firecracker";
+              hypervisor = "qemu";
+              vcpu = 2;
+              mem = 1024;
               
-              # Minimal resources per VM
-              vcpu = 1;
-              mem = 512;  # 512MB should be plenty for a git server
-              
-              # Network interface for the VM
+              # User-mode networking (no root/TAP setup needed)
               interfaces = [{
-                type = "tap";
-                id = "vm-${config.networking.hostName}";
-                mac = "02:00:00:00:00:01";  # You'd generate this dynamically
+                type = "user";
+                id = "vm-net";
+                mac = "02:00:00:00:00:01";
               }];
               
-              # NO SHARES - everything baked into the image
+              # No shares - self-contained VM
               shares = [];
               
-              # Persistent volume for git repositories
+              # Persistent volume for git repos
               volumes = [{
                 image = "git-data.img";
                 mountPoint = "/var/lib/git";
-                size = 2048;  # 2GB for repos
+                size = 2048;
               }];
               
-              # Firecracker-specific optimizations
-              kernel.enable = true;
-              initrd.enable = true;
+              # Socket for serial console
+              socket = "git-server.sock";
             };
             
-            # Minimal networking
-            networking.useDHCP = true;
             networking.firewall = {
               enable = true;
-              allowedTCPPorts = [ 23231 23232 ];  # HTTP and SSH
+              allowedTCPPorts = [ 23231 23232 ];
             };
-            
-            # Minimal boot
-            boot.isContainer = false;
-            boot.initrd.systemd.enable = false;
             
             system.stateVersion = "24.05";
           })
@@ -100,18 +83,7 @@
     {
       nixosConfigurations.git-server = vmConfig;
       
-      packages.${system} = {
-        # The kernel and initrd for Firecracker
-        kernel = vmConfig.config.microvm.kernel.file;
-        initrd = vmConfig.config.microvm.initrd.file;
-        
-        # The root filesystem image
-        rootfs = vmConfig.config.microvm.rootfs;
-        
-        # The runner script
-        default = vmConfig.config.microvm.declaredRunner;
-        vm = vmConfig.config.microvm.declaredRunner;
-      };
+      packages.${system}.default = vmConfig.config.microvm.declaredRunner;
       
       apps.${system}.default = {
         type = "app";
