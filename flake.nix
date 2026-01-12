@@ -19,7 +19,6 @@
             networking.hostName = "git-server";
             
             documentation.enable = false;
-            environment.noXlibs = true;
             
             users.users.git = {
               isNormalUser = true;
