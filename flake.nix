@@ -23,7 +23,6 @@
               networking.hostName = "soft-serve";
 
               # Minimal system
-              services.getty.enable = false;
               documentation.enable = false;
 
               users.users.softserve = {
