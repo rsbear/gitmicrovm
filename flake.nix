@@ -52,22 +52,27 @@
                 id = "vm-net";
                 mac = "02:00:00:00:00:01";
               }];
-              # QEMU supports virtiofs shares
+              # Use 9p instead of virtiofs for better compatibility
               shares = [{
                 source = "/nix/store";
-                mountPoint = "/nix/store";
-                tag = "store";
-                proto = "virtiofs";
+                mountPoint = "/nix/.ro-store";
+                tag = "ro-store";
+                proto = "9p";
+                securityModel = "none";
               }];
-              # Optional: persistent volume for git data
+              # Persistent volume for git data
               volumes = [{
                 image = "soft-serve-data.img";
                 mountPoint = "/var/lib/soft-serve";
                 size = 1024;
               }];
+              # Ensure writable nix store overlay
+              writableStoreOverlay = "/nix/.rw-store";
             };
             
             networking.useDHCP = true;
+            networking.firewall.allowedTCPPorts = [ 22 23231 9418 ];
+            
             system.stateVersion = "24.05";
           })
         ];
